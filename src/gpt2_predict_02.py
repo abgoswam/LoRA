@@ -8,14 +8,18 @@ import json
 import os
 
 import torch
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import encoder
 from data_utils import FT_Dataset_2
+from gpt2_beam import beam
+
+from model import GPT2Config, GPT2LMModel
 
 from gpu import (
     add_gpu_params,
-    parse_gpu
+    parse_gpu, distributed_sync, cleanup
 )
 
 torch.set_printoptions(threshold=100000)
@@ -42,7 +46,6 @@ parser.add_argument('--length_penalty', type=float, default=1.0, help='length pe
 parser.add_argument('--no_repeat_ngram_size', type=int, default=4, help='no_repeat_ngram_size')
 parser.add_argument('--repetition_penalty', type=float, default=1.0, help='repetition_penalty')
 parser.add_argument('--eos_token_id', action='append', type=int, default=[50256], help='eos token id')
-parser.add_argument('--output_file', type=str, default='beam_prediction.jsonl', help='output file name')
 parser.add_argument('--prefix_len', default=0, type=int, help='prefix length.')
 parser.add_argument('--infix_len', default=0, type=int, help='infix length.')
 
@@ -91,5 +94,26 @@ if __name__ == "__main__":
 
     valid_data = FT_Dataset_2(ft_samples, args.batch_size, args.seq_len, args.eval_len, prefix_len=args.prefix_len, infix_len=args.infix_len)
     valid_sampler = torch.utils.data.distributed.DistributedSampler(valid_data)
+    valid_loader = DataLoader(valid_data, batch_size=args.batch_size, num_workers=0, shuffle=False, pin_memory=False, drop_last=False, sampler=valid_sampler)
+
+    if args.model_card == 'gpt2.sm':
+        config = GPT2Config(n_embd=768, n_layer=12, n_head=12, lora_attn_dim=args.lora_dim, lora_attn_alpha=args.lora_alpha, prefix_len=args.prefix_len, infix_len=args.infix_len)
+    elif args.model_card == 'gpt2.md':
+        config = GPT2Config(n_embd=1024, n_layer=24, n_head=16, lora_attn_dim=args.lora_dim, lora_attn_alpha=args.lora_alpha, prefix_len=args.prefix_len, infix_len=args.infix_len)
+    elif args.model_card == 'gpt2.lg':
+        config = GPT2Config(n_embd=1280, n_layer=36, n_head=20, lora_attn_dim=args.lora_dim, lora_attn_alpha=args.lora_alpha, prefix_len=args.prefix_len, infix_len=args.infix_len)
+
+    lm_net = GPT2LMModel(config)
+    if args.init_checkpoint is not None:
+        print('loading model pretrained weight.')
+        cp = torch.load(args.init_checkpoint, map_location=torch.device('cpu'))
+        lm_net.load_weight(cp)
+    lm_net = lm_net.cuda()
+
+    print('model sampling ...')
+    all_predictions = beam(lm_net, valid_loader, args)
+    distributed_sync(args)
+    print('cleanup dist ...')
+    cleanup(args)
 
 print("done")

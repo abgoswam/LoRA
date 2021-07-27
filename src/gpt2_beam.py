@@ -171,12 +171,12 @@ def _postprocess_next_token_scores(
     return scores
 
 
-def _add_beam_candidate(best_score, best_sequence, batch_size, num_beams, beam_scores, history, eos_token_id=None):
+def _add_beam_candidate(best_score, best_sequence, batch_size, num_beams, beam_scores, history, length_penalty, eos_token_id=None):
     last_tokens = history[:, -1]
     for _i in range(batch_size * num_beams):
         if eos_token_id is None or last_tokens[_i] in eos_token_id:
             cur_len = history.shape[-1]
-            _score = beam_scores.view(-1)[_i] / cur_len ** args.length_penalty
+            _score = beam_scores.view(-1)[_i] / cur_len ** length_penalty
 
             batch_id = _i // num_beams
 
@@ -317,9 +317,9 @@ def beam(model, data_iter, args):
                     else:
                         history = torch.cat((history[beam_idx.view(-1)], token_id.detach()), dim=1).detach()
                     #print('history.shape (1)', history.shape)
-                    _add_beam_candidate(best_score, best_sequence, batch_size, num_beams, beam_scores, history, eos_token_id = args.eos_token_id)
+                    _add_beam_candidate(best_score, best_sequence, batch_size, num_beams, beam_scores, history, args.length_penalty, eos_token_id = args.eos_token_id)
                 
-                _add_beam_candidate(best_score, best_sequence, batch_size, num_beams, beam_scores, history)
+                _add_beam_candidate(best_score, best_sequence, batch_size, num_beams, beam_scores, history, args.length_penalty)
 
 
             with torch.no_grad():
@@ -344,11 +344,14 @@ def beam(model, data_iter, args):
                     print('inference samples', idx)
 
     if args.rank == 0:
-        pred_file = os.path.join(args.work_dir, args.output_file) 
-        print('saving prediction file', pred_file)
-        with open(pred_file, 'w') as writer:
-            for _i in all_predictions:
-                writer.write(json.dumps(all_predictions[_i]) + '\n')
+        if 'output_file' in args and len(args.output_file) > 0:
+            pred_file = os.path.join(args.work_dir, args.output_file)
+            print('saving prediction file', pred_file)
+            with open(pred_file, 'w') as writer:
+                for _i in all_predictions:
+                    writer.write(json.dumps(all_predictions[_i]) + '\n')
+        else:
+            return all_predictions
     
 
 if __name__ == '__main__':
