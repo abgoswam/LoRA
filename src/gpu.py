@@ -52,7 +52,20 @@ def parse_gpu(args):
     torch.manual_seed(args.random_seed)
     
     if args.platform == 'local':
-        dist.init_process_group(backend='nccl')
+        if os.name == 'nt':
+            rank = 0
+            world_size = 1
+            init_method = "file:///e:/tmp/log2"
+            # initialize the process group
+            dist.init_process_group(
+                "gloo",
+                init_method=init_method,
+                rank=rank,
+                world_size=world_size
+            )
+        else:
+            dist.init_process_group(backend='nccl')
+
         local_rank = torch.distributed.get_rank()
         torch.cuda.set_device(local_rank)
         device = torch.device("cuda", local_rank)
@@ -60,7 +73,6 @@ def parse_gpu(args):
         args.device = device
         args.world_size = torch.distributed.get_world_size()
         args.dist = dist
-        
     elif args.platform == 'azure':
         import horovod.torch as hvd
         hvd.init()

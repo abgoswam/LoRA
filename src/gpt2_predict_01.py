@@ -34,17 +34,14 @@ from tqdm import tqdm
 parser = argparse.ArgumentParser()
 parser.add_argument('--input', default=None, type=str, help='ft input file')
 parser.add_argument('--vocab', type=str, default=None, help='vocab path')
-parser.add_argument('--output', default=None, type=str, help='ft output file')
 parser.add_argument('--add_bos', action='store_true', help='')
 parser.add_argument('--add_eos', action='store_true', help='')
 args = parser.parse_args()
 
-
 if __name__ == "__main__":
     enc = encoder.get_encoder(args.vocab)
-    
-    writer = open(args.output, 'w', encoding="utf8")
 
+    ft_encoded_jsonls = []
     with open(args.input, 'r', encoding="utf8") as reader:
         line_idx = 0
         for line in tqdm(reader):
@@ -54,17 +51,16 @@ if __name__ == "__main__":
 
             bos = 50256
             eos = 50256
-            context_bpes, _ = enc.encode(context) 
+            context_bpes, _ = enc.encode(context)
             context_bpes += [bos] if args.add_bos else []
 
             completion_bpes, _ = enc.encode(' ' + completion)
             completion_bpes += [eos] if args.add_eos else []
 
-            ft_json = {}
-            ft_json['context'] = context_bpes
-            ft_json['completion'] = completion_bpes 
-            writer.write(json.dumps(ft_json)+'\n')
+            ft_encoded_json = {'context': context_bpes, 'completion': completion_bpes}
 
+            ft_encoded_jsonls.append(ft_encoded_json)
             line_idx += 1
 
-    writer.close()
+
+print("done")
