@@ -116,4 +116,14 @@ if __name__ == "__main__":
     print('cleanup dist ...')
     cleanup(args)
 
+    sampled = []
+    for i in range(len(all_predictions)):
+        _dict = all_predictions[i]
+        _id = _dict['id']
+        _pred_tokens = _dict['predict']
+        sample = enc.decode(_pred_tokens).split('<|endoftext|>')[0].split('\n\n')[0].strip()
+        sampled.append(sample)
+
+    print(sampled)
+
 print("done")
